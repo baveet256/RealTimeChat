@@ -1,6 +1,14 @@
+import { generateToken } from "../config/generateToken.js";
 import { publishtoqueue } from "../config/rabbitmq.js";
 import TryCatch from "../config/trycatch.js";
 import { redisClient } from "../index.js";
+import { isauth } from "../middleware/isAuth.js";
+import { User } from "../model/user.js";
+import {IUser} from "../model/User.js";
+
+export interface AuthenticatedReq extends Request  {
+    user? : IUser | null;
+}
 
 export const loginUser = TryCatch(async (req, res) => {
 
@@ -47,20 +55,52 @@ export const loginUser = TryCatch(async (req, res) => {
 
 export const verifyOtp = TryCatch(async (req, res) => {
     
-    const { email, otp } = req.body;
+    const { email, otp:enteredOTP } = req.body;
     
-    if (!email || !otp) {
+    if (!email || !enteredOTP) {
         return res.status(400).json({ message: "Email and OTP are required." });
     }
 
     const storedOtp = await redisClient.get(`otp:${email}`);
-    
-    if (storedOtp === otp) {
-        // OTP is valid
-        await redisClient.del(`otp:${email}`); // Invalidate OTP after successful verification
-        return res.status(200).json({ message: "OTP verified successfully." });
-    } else {
-        return res.status(400).json({ message: "Invalid OTP." });
-    } 
+
+    // Convert storedOtp to string for comparison
+
+    console.log(`Verifying OTP for ${email}: entered ${enteredOTP}, stored ${storedOtp}`);
+
+    if (!storedOtp || String(storedOtp) !== String(enteredOTP)) {
+        return res.status(400).json({ message: "OTP has expired or is invalid." });
+    }
+    // OTP is valid
+    await redisClient.del(`otp:${email}`); // Invalidate OTP after successful verification
+
+    console.log(`OTP verified for ${email}`);
+
+    let user = await User.findOne({ email });
+
+    console.log(`Fetched user for ${email}: ${user}`);
+
+    if (!user) {
+        const name = email.split("@")[0];
+        user = await User.create({ name, email });
+        await user.save();
+    }
+    console.log(`User fetched/created: ${user}`);
+
+    // Generate a JWT using the user's id and return user + token in a single response
+    const token = generateToken(user._id ?? user.id ?? user);
+
+    console.log(`Generated token for ${email}: ${token}`);
+
+    res.json({ message: "User is Verified!", user, token });
 
 });    
+
+export const myprofile = TryCatch(async (req : AuthenticatedReq, res) => {  
+    const user = req.user; 
+
+    if (!user) {
+        return res.status(404).json({ message: "User not found." });
+    }
+
+    res.status(200).json({ user });
+});
