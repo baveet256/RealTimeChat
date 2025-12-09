@@ -41,7 +41,7 @@ export const SendOtpConsumer = async () => {
 
                 // Send email
                 await transporter.sendMail({
-                    from: "Collaborative Chat App",
+                    from: "Collaborate Pro Max",
                     to,
                     subject,
                     text,

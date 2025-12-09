@@ -8,20 +8,23 @@ import { createClient } from "redis";
 import userRoutes from './routes/user.js';
 import { connectRabbitMQ } from "./config/rabbitmq.js";
 
+import cors from 'cors';
+
 dotenv.config();
 
 connectDb();
-connectRabbitMQ();
 
 export const redisClient = createClient({
     url: process.env.REDIS_URL!,
 });
 
 redisClient.connect().then(()=>console.log("connected to Redis!")).catch(console.error);
+connectRabbitMQ();
+
 const app = express()
 
 app.use(express.json());
-
+app.use(cors());
 
 const port = process.env.PORT;
 app.use("/api/v1",userRoutes);

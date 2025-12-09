@@ -2,13 +2,8 @@ import { generateToken } from "../config/generateToken.js";
 import { publishtoqueue } from "../config/rabbitmq.js";
 import TryCatch from "../config/trycatch.js";
 import { redisClient } from "../index.js";
-import { isauth } from "../middleware/isAuth.js";
-import { User } from "../model/user.js";
-import {IUser} from "../model/User.js";
-
-export interface AuthenticatedReq extends Request  {
-    user? : IUser | null;
-}
+import { isAuth, type AuthenticatedRequest } from "../middleware/isAuth.js";
+import { User } from "../model/User.js";
 
 export const loginUser = TryCatch(async (req, res) => {
 
@@ -24,16 +19,14 @@ export const loginUser = TryCatch(async (req, res) => {
     const attempts = await redisClient.get(rateLimitKey);
 
     // Check rate limit
-    if (attempts && Number(attempts) >= 5) {
+    if (attempts) {
         return res.status(429).json({ 
             message: "Too many login attempts. Please try again later." 
         });
     }
 
     // Increase attempts
-    await redisClient.incr(rateLimitKey);
-    await redisClient.expire(rateLimitKey, 60);
-
+    console.log(`OTP generation starts ${email}`);
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -44,8 +37,8 @@ export const loginUser = TryCatch(async (req, res) => {
 
     const message = {
         to: email,
-        subject: "Collaborative AI OTP Code",
-        text: `Your OTP code is ${otp}. It is valid for 5 minutes.`,
+        subject: "Collaborate Pro Max",
+        text: `Your OTP code is ${otp}. It is valid for 5 minutes .`,
     };
 
     await publishtoqueue("send-otp", message);
@@ -55,9 +48,9 @@ export const loginUser = TryCatch(async (req, res) => {
 
 export const verifyOtp = TryCatch(async (req, res) => {
     
-    const { email, otp:enteredOTP } = req.body;
+    const { email, otp:enteredOtp } = req.body;
     
-    if (!email || !enteredOTP) {
+    if (!email || !enteredOtp) {
         return res.status(400).json({ message: "Email and OTP are required." });
     }
 
@@ -65,9 +58,9 @@ export const verifyOtp = TryCatch(async (req, res) => {
 
     // Convert storedOtp to string for comparison
 
-    console.log(`Verifying OTP for ${email}: entered ${enteredOTP}, stored ${storedOtp}`);
+    console.log(`Verifying OTP for ${email}: entered ${enteredOtp}, stored ${storedOtp}`);
 
-    if (!storedOtp || String(storedOtp) !== String(enteredOTP)) {
+    if (!storedOtp || String(storedOtp) !== String(enteredOtp)) {
         return res.status(400).json({ message: "OTP has expired or is invalid." });
     }
     // OTP is valid
@@ -87,20 +80,40 @@ export const verifyOtp = TryCatch(async (req, res) => {
     console.log(`User fetched/created: ${user}`);
 
     // Generate a JWT using the user's id and return user + token in a single response
-    const token = generateToken(user._id ?? user.id ?? user);
+    const token = generateToken(user);
 
     console.log(`Generated token for ${email}: ${token}`);
 
     res.json({ message: "User is Verified!", user, token });
 
-});    
+});   
 
-export const myprofile = TryCatch(async (req : AuthenticatedReq, res) => {  
-    const user = req.user; 
+export const myprofile = TryCatch(async (req: AuthenticatedRequest, res) => {
+    const user = req.user;  // <-- correct
+    res.json(user);
+});
 
+export const updateName = TryCatch(async (req: AuthenticatedRequest, res) => {
+    const user = await User.findById(req.user?._id);
+    if (!user) {    
+        return res.status(404).json({ message: "User not found. Please login" });
+        return;
+    }
+    user.name = req.body.name;
+    await user.save();
+    const token = generateToken(user);
+    res.json({ message: "User Updated", user, token });
+});
+
+export const getAllUsers = TryCatch(async (req: AuthenticatedRequest, res) => {
+    const users = await User.find();
+    res.json(users);
+});
+
+export const getAUser = TryCatch(async (req: AuthenticatedRequest, res) => {
+    const user = await User.findById(req.params.id);
     if (!user) {
         return res.status(404).json({ message: "User not found." });
     }
-
-    res.status(200).json({ user });
+    res.json(user);
 });
