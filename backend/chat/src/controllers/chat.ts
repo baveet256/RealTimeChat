@@ -1,6 +1,6 @@
 import TryCatch from "../config/trycatch.js";
 import type { AuthenticatedRequest } from "../middlewares/isAuth.js";
-import Chat from "../models/Chat.js";
+import { Chat } from "../models/Chat.js";
 
 export const createNewChat = TryCatch(async (req : AuthenticatedRequest, res) => {
     const userId = req.user?._id;
@@ -8,7 +8,7 @@ export const createNewChat = TryCatch(async (req : AuthenticatedRequest, res) =>
     const {OtherUserId} = req.body;
 
     if (!OtherUserId) {
-        res.status(401).json({ message: "Unauthorized: User not authenticated." });
+        res.status(400).json({ message: "Other User is required" });
         return;
     }
     
@@ -27,6 +27,30 @@ export const createNewChat = TryCatch(async (req : AuthenticatedRequest, res) =>
     });
     await newChat.save();
     res.status(201).json({ message: "Create New Chat Endpoint"
-        ,chatId:
+        ,chatId:newChat._id
      });  
-        });
+});
+
+export const getAllChats = TryCatch(async (req : AuthenticatedRequest, res) => {
+    const userId = req.user?._id;
+
+    if (!userId) {
+        res.status(400).json({ message: "User ID is required" });
+        return;
+    }
+
+    const chats = await Chat.find({ users: userId?.toString()}).sort({updatedAt:-1});
+
+    const chatWithUserData = await Promise.all(chats.map(async (chat) => {
+        const otherUserId = chat.users.find((id) => id.toString() !== userId?.toString());
+        
+        return {
+            chatId: chat._id,
+            users: chat.users,
+            otherUserId,
+            updatedAt: chat.updatedAt,
+        };
+    }));
+
+    res.json({ chats: chatWithUserData });
+});
